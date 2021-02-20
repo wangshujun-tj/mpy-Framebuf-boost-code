@@ -395,8 +395,10 @@ STATIC mp_framebuf_p_t formats[] = {
 };
 
 static inline void setpixel(const mp_obj_framebuf_t *fb, int x, int y, uint32_t col) {
-    formats[fb->format].setpixel(fb, x, y, col);
+    if (x>=0 && x<fb->width && y>=0 && y<fb->height)
+        formats[fb->format].setpixel(fb, x, y, col);
 }
+
 
 static inline uint32_t getpixel(const mp_obj_framebuf_t *fb, int x, int y) {
     return formats[fb->format].getpixel(fb, x, y);
@@ -1211,10 +1213,9 @@ STATIC mp_obj_t framebuf_show_bmp(size_t n_args, const mp_obj_t *args) {
     mp_int_t w = self->width-x0;
     mp_int_t h = self->height-y0;
     if (n_args >= 6) {
-        w = MIN(mp_obj_get_int(args[4]),self->width-x0);
-        h = MIN(mp_obj_get_int(args[5]),self->height-y0);
+        w = MIN(mp_obj_get_int(args[4]),w);
+        h = MIN(mp_obj_get_int(args[5]),h);
     }
-
     mp_obj_t f_args[2] = {
         mp_obj_new_str(filename, strlen(filename)),
         MP_OBJ_NEW_QSTR(MP_QSTR_rb),
@@ -1240,7 +1241,7 @@ STATIC mp_obj_t framebuf_show_bmp(size_t n_args, const mp_obj_t *args) {
             mp_printf(&mp_plat_print,"File %s color no match.\r\n",filename);
             return mp_const_none;
         }
-    }else if(self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHMSB){
+    }else if(self->format==FRAMEBUF_MVLSB || self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHMSB){
         if (bmp_h.biBitcount!=0x01){
             mp_printf(&mp_plat_print,"File %s color no match.\r\n",filename);
             return mp_const_none;
@@ -1249,36 +1250,50 @@ STATIC mp_obj_t framebuf_show_bmp(size_t n_args, const mp_obj_t *args) {
         mp_printf(&mp_plat_print,"Unsupported format. \r\n");
         return mp_const_none;
     }
+    //mp_printf(&mp_plat_print,"x=%d,y=%d,w=%d,h=%d\r\n",x0,y0,w,h);
+    if (x0<0 && abs(x0)>bmp_h.biWidth) x0=-bmp_h.biWidth;
+    if (y0<0 && abs(y0)>bmp_h.biHeight) y0=-bmp_h.biHeight;
+    if (x0>self->width) x0=self->width;
+    if (y0>self->height) y0=self->height;
+    if (w>self->width-x0) w=self->width-x0;    
+    if (h>self->height-y0) h=self->height-y0;   
+
+    //mp_printf(&mp_plat_print,"x=%d,y=%d,w=%d,h=%d\r\n",x0,y0,w,h);
+    
     w=MIN(bmp_h.biWidth,w);
     h=MIN(bmp_h.biHeight,h);
+    //mp_printf(&mp_plat_print,"x=%d,y=%d,w=%d,h=%d\r\n",x0,y0,w,h);
     uint32_t stride=(bmp_h.biWidth+7)/8*8;
     const mp_obj_t s_args[3] = {bmp_file , MP_OBJ_NEW_SMALL_INT(bmp_h.bfOffBits) , MP_OBJ_NEW_SMALL_INT(SEEK_SET)};
     stream_seek( 3, s_args);
     //mp_printf(&mp_plat_print,"write pixel. \r\n");
     if (self->format==FRAMEBUF_RGB565 || self->format==FRAMEBUF_RGB565SW ){
         uint8_t line_buf[bmp_h.biWidth][3];
-        uint32_t hh,ww;
+        int32_t hh,ww;
         uint16_t dot_col;
-        for(hh=h;hh;hh--){
+        for(hh=bmp_h.biHeight;hh;hh--){
             len=mp_stream_rw(bmp_file ,&line_buf, bmp_h.biWidth*3, &errcode, MP_STREAM_OP_READ);
-            for(ww=w;ww;ww--){
-                //mp_printf(&mp_plat_print,"%4.4x,",dot_col);
-                dot_col=line_buf[ww-1][0]>>3;
-                dot_col|=(line_buf[ww-1][1]&0xfc)<<5;
-                dot_col|=(line_buf[ww-1][2]&0xf8)<<8;
-                setpixel(self, x0+ww-1, y0+hh-1,dot_col);
+            for(ww=bmp_h.biWidth;ww;ww--){
+                if (ww<=w && hh<h){
+                    dot_col=line_buf[ww-1][0]>>3;
+                    dot_col|=(line_buf[ww-1][1]&0xfc)<<5;
+                    dot_col|=(line_buf[ww-1][2]&0xf8)<<8;
+                    setpixel(self, x0+ww-1, y0+hh-1,dot_col);
+                }
             }
         }
-    }else if(self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHMSB){
+    }else if(self->format==FRAMEBUF_MVLSB || self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHMSB){
         uint8_t line_buf[stride/8];
-        uint32_t hh,ww;
-        for(hh=h;hh;--hh){
+        int32_t hh,ww;
+        for(hh=bmp_h.biHeight;hh;--hh){
             len=mp_stream_rw(bmp_file ,&line_buf, stride/8, &errcode, MP_STREAM_OP_READ);
-            for(ww=w;ww;--ww){
-                if ((line_buf[ww/8]|(0x80>>(ww%8)))==0){
-                    setpixel(self, x0+ww-1, y0+hh-1,0);
-                }else{
-                    setpixel(self, x0+ww-1, y0+hh-1,1);
+            for(ww=bmp_h.biWidth;ww;--ww){
+                if (ww<=w && hh<h){
+                    if ((line_buf[ww/8]&(0x80>>(ww%8)))==0){
+                        setpixel(self, x0+ww-1, y0+hh-1,0);
+                    }else{
+                        setpixel(self, x0+ww-1, y0+hh-1,1);
+                    }
                 }
             }
         }
@@ -1317,7 +1332,7 @@ STATIC mp_obj_t framebuf_save_bmp(size_t n_args, const mp_obj_t *args) {
         bmp_h.biBitcount=0x18;
         bmp_h.bfSize=56+w*h*3;   //wen jian zong chi cun
         bmp_h.biPSize=w*h*3;
-    }else if(self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHMSB){
+    }else if(self->format==FRAMEBUF_MVLSB || self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHMSB){
         bmp_h.bfOffBits=0x3e;//dian zhen cun chu pian yi
         bmp_h.biBitcount=0x01;
         bmp_h.bfSize=62+stride/8*h;   //wen jian zong chi cun
@@ -1347,6 +1362,10 @@ STATIC mp_obj_t framebuf_save_bmp(size_t n_args, const mp_obj_t *args) {
     }
     uint8_t buf[bmp_h.bfOffBits-sizeof(BITMAPFILEHEADER)];
     memset(&buf,0,bmp_h.bfOffBits-sizeof(BITMAPFILEHEADER)); 
+    buf[bmp_h.bfOffBits-sizeof(BITMAPFILEHEADER)-2]=0xff;
+    buf[bmp_h.bfOffBits-sizeof(BITMAPFILEHEADER)-3]=0xff;
+    buf[bmp_h.bfOffBits-sizeof(BITMAPFILEHEADER)-4]=0xff;
+    
     len=mp_stream_rw(bmp_file ,&buf, bmp_h.bfOffBits-sizeof(BITMAPFILEHEADER), &errcode, MP_STREAM_OP_WRITE);
     if (errcode != 0 && len!=sizeof(BITMAPFILEHEADER)) {
         mp_raise_OSError(errcode);
@@ -1367,14 +1386,14 @@ STATIC mp_obj_t framebuf_save_bmp(size_t n_args, const mp_obj_t *args) {
             }
             len=mp_stream_rw(bmp_file ,&line_buf, w*3, &errcode, MP_STREAM_OP_WRITE);
         }
-    }else if(self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHMSB){
+    }else if(self->format==FRAMEBUF_MVLSB || self->format==FRAMEBUF_MHLSB || self->format==FRAMEBUF_MHMSB){
         uint8_t line_buf[stride/8];
         uint32_t hh,ww;
         for(hh=h;hh;--hh){
             memset(&line_buf,0,stride/8);
             for(ww=w;ww;--ww){
                 if (getpixel(self, x0+ww-1, y0+hh-1)==0)
-                    line_buf[ww/8]|=(0x80)>>(ww%8);
+                    line_buf[(ww-1)/8]|=(0x80)>>((ww-1)%8);
             }
             len=mp_stream_rw(bmp_file ,&line_buf, stride/8, &errcode, MP_STREAM_OP_WRITE);
         }
