@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "py/runtime.h"
 #include "py/stream.h"
@@ -42,6 +43,7 @@ typedef struct _font_set_t{
   uint8_t rotate;		//xuanzhuan
   uint8_t scale;		//fangda 16jinzhi ,gaowei hengxiang  diweizongxiang
   uint8_t inverse;      //fanbai
+  uint16_t bg_col;
 }font_set_t;
 
 typedef struct _font_inf_t{
@@ -150,10 +152,22 @@ STATIC mp_obj_t framebuf_font_set(size_t n_args, const mp_obj_t *args) {
     uint8_t prompt=0;
     mp_obj_framebuf_t *self = MP_OBJ_TO_PTR(args[0]);
     mp_int_t style = mp_obj_get_int(args[1]);
-    mp_int_t rotate = mp_obj_get_int(args[2]);
-    mp_int_t scale = mp_obj_get_int(args[3]);
-    mp_int_t inverse = mp_obj_get_int(args[4]);
-
+    mp_int_t rotate =0;
+    if (n_args > 2) {
+        rotate = mp_obj_get_int(args[2]);
+    }
+    mp_int_t scale=1;
+    if (n_args > 3) {
+        scale = mp_obj_get_int(args[3]);
+    }
+    mp_int_t inverse =0;
+    if (n_args > 4) {
+        inverse = mp_obj_get_int(args[4]);
+    }
+    mp_int_t bg_col =0;
+    if (n_args > 5) {
+        bg_col = mp_obj_get_int(args[5]);
+    }    
     if ((style&0x0f)>4) {
         style=0x11;
         prompt=1;
@@ -175,18 +189,18 @@ STATIC mp_obj_t framebuf_font_set(size_t n_args, const mp_obj_t *args) {
         prompt=1;
     }
     self->font_set.rotate=rotate;     
-    
     if (inverse>1){ 
         inverse=1;
         prompt=1;
     }
     self->font_set.inverse=inverse; 
+    self->font_set.bg_col=bg_col; 
     if  (prompt==1){
-        mp_printf(&mp_plat_print,"style=%d,rotate=%d,scale=%d,inverse=%d\n\r",self->font_set.f_style,self->font_set.rotate,self->font_set.scale,self->font_set.inverse);    
+        mp_printf(&mp_plat_print,"style=%d,rotate=%d,scale=%d,inverse=%d,bg_col=%d\n\r",self->font_set.f_style,self->font_set.rotate,self->font_set.scale,self->font_set.inverse,self->font_set.bg_col);    
     }
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(framebuf_font_set_obj, 5, 5, framebuf_font_set);
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(framebuf_font_set_obj, 2, 6, framebuf_font_set);
 
 
 
@@ -1081,6 +1095,7 @@ STATIC mp_obj_t framebuf_text(size_t n_args, const mp_obj_t *args) {
     mp_int_t y0 = mp_obj_get_int(args[3]);
     mp_int_t col = 1;
     uint8_t chr_data[130];
+    int dot_col=0;
     uint32_t mask,unicode;
     uint8_t utf8len;
     uint8_t ret=1;
@@ -1135,7 +1150,9 @@ STATIC mp_obj_t framebuf_text(size_t n_args, const mp_obj_t *args) {
             ret=gethzk(self,unicode,chr_data,&font_width,&font_high,&font_stride);
         }
         // loop over char data
+        
         if (ret==0){
+            
             mask=0x00000001<<(font_stride*8-1);
             if (((self->font_set.rotate==0 ||self->font_set.rotate==2)&&(x0 + font_width*self->font_set.scale <= self->width )&&( y0 + font_high*self->font_set.scale <= self->height)) || 
             ((self->font_set.rotate==1 ||self->font_set.rotate==3)&&(x0 + font_high*self->font_set.scale <= self->width )&&( y0 + font_width*self->font_set.scale <= self->height))){
@@ -1146,23 +1163,27 @@ STATIC mp_obj_t framebuf_text(size_t n_args, const mp_obj_t *args) {
                     }
                     for (int x=0; x<font_width; x++) { // scan over vertical column
                         if (((vline_data & (mask>>x))&&self->font_set.inverse==0) ||
-                        ((~vline_data & (mask>>x))&&self->font_set.inverse==1)){ // only draw if pixel set
-                            for (int x_scale=0;x_scale<self->font_set.scale;x_scale++){
-                                for (int y_scale=0;y_scale<self->font_set.scale;y_scale++){
-                                    switch(self->font_set.rotate){
-                                    case 0:
-                                        setpixel(self, x0+x*self->font_set.scale+x_scale, y0+y*self->font_set.scale+y_scale, col);
-                                        break;
-                                    case 1:
-                                        setpixel(self, x0+font_high*self->font_set.scale-y*self->font_set.scale-y_scale, y0+x*self->font_set.scale+x_scale, col);
-                                        break;
-                                    case 2:
-                                        setpixel(self, x0+font_width*self->font_set.scale-x*self->font_set.scale-x_scale, y0+font_high*self->font_set.scale-y*self->font_set.scale-y_scale, col);
-                                        break;
-                                    case 3:
-                                        setpixel(self, x0+y*self->font_set.scale-y_scale, y0+font_width*self->font_set.scale-x*self->font_set.scale-x_scale, col);
-                                        break;
-                                    }
+                        ((~vline_data & (mask>>x))&&self->font_set.inverse==1)){ 
+                        // only draw if pixel set
+                            dot_col=col;
+                        }else{
+                            dot_col=self->font_set.bg_col;
+                        }
+                        for (int x_scale=0;x_scale<self->font_set.scale;x_scale++){
+                            for (int y_scale=0;y_scale<self->font_set.scale;y_scale++){
+                                switch(self->font_set.rotate){
+                                case 0:
+                                    setpixel(self, x0+x*self->font_set.scale+x_scale, y0+y*self->font_set.scale+y_scale, dot_col);
+                                    break;
+                                case 1:
+                                    setpixel(self, x0+font_high*self->font_set.scale-y*self->font_set.scale-y_scale, y0+x*self->font_set.scale+x_scale, dot_col);
+                                    break;
+                                case 2:
+                                    setpixel(self, x0+font_width*self->font_set.scale-x*self->font_set.scale-x_scale, y0+font_high*self->font_set.scale-y*self->font_set.scale-y_scale, dot_col);
+                                    break;
+                                case 3:
+                                    setpixel(self, x0+y*self->font_set.scale-y_scale, y0+font_width*self->font_set.scale-x*self->font_set.scale-x_scale, dot_col);
+                                    break;
                                 }
                             }
                         }
