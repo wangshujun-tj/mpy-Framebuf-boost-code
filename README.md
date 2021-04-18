@@ -19,3 +19,9 @@ mp_obj_t stream_seek(size_t n_args, const mp_obj_t *args)
 并在
 py/stream.h 文件中114行添加
 mp_obj_t stream_seek(size_t n_args, const mp_obj_t *args);
+
+modframebuf.c 和 font_asc.h复制到extmod目录
+
+然后直接按照原本的编译方式就可以工作了
+
+测试过esp32，esp8266，stm32f407都是可以工作的
