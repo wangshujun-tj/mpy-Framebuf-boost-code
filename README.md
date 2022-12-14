@@ -11,19 +11,10 @@ font_set用于设置字体大小、旋转、放大和反白。
 增加了show_bmp，用于处理rgb格式或者二值格式的bmp文件显示。
 增加了save_bmp，用于处理rgb格式或者二值格式的fb内容保存成bmp文件。
 
-以上功能在esp32环境下，mpy1.13版本上测试通过，编译时需要对
-py/stream.c 文件的大约430行，去掉   STATIC 
-
-mp_obj_t stream_seek(size_t n_args, const mp_obj_t *args) 
-
-并在
-py/stream.h 文件中114行添加
-mp_obj_t stream_seek(size_t n_args, const mp_obj_t *args);
-
 modframebuf.c 和 font_asc.h复制到extmod目录
 
 然后直接按照原本的编译方式就可以工作了
 
 测试过esp32，esp8266，stm32f407都是可以工作的
 
-增加的英文字库差不多有100k，程序代码增加约20k，变异不能通过的时候注意调整程序空间的大小，比如512kflash的芯片，默认配置都是不够用的
+增加的英文字库差不多有100k，程序代码增加约20k，编译不能通过的时候注意调整程序空间的大小，比如512kflash的芯片，默认配置都是不够用的
