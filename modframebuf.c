@@ -138,9 +138,10 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_2(framebuf_font_load_obj, framebuf_font_load);
 STATIC mp_obj_t framebuf_font_free(mp_obj_t self_in) {
     mp_obj_framebuf_t *self = MP_OBJ_TO_PTR(self_in);
     mp_printf(&mp_plat_print,"font file close \n\r");
-    if (self->font_file!= NULL)
+    if (self->font_file!= NULL){
         mp_stream_close(self->font_file);
         self->font_file=NULL; 
+    }
     return mp_const_none;
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(framebuf_font_free_obj, framebuf_font_free);
