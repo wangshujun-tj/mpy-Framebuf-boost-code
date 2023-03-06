@@ -666,7 +666,7 @@ STATIC mp_obj_t framebuf_make_new(const mp_obj_type_t *type, size_t n_args, size
         default:
             mp_raise_ValueError(MP_ERROR_TEXT("invalid format"));
     }
-    mp_printf(&mp_plat_print,"w=%d,h=%d,f=%d,s=%d\n\r",o->width,o->height,o->format,o->stride);
+    //mp_printf(&mp_plat_print,"w=%d,h=%d,f=%d,s=%d\n\r",o->width,o->height,o->format,o->stride);
     return MP_OBJ_FROM_PTR(o);
 }
 
@@ -1751,13 +1751,13 @@ STATIC mp_obj_t framebuf_show_bmp(size_t n_args, const mp_obj_t *args) {
             }
         }
     }else if ((self->format&0xE0)==(FRAMEBUF_GS2_HMSB&0xE0)){
-        uint32_t stride=(bmp_h.biWidth+0x0F)&(~0x0F);
-        uint8_t line_buf[stride/4];
+        uint32_t stride=(bmp_h.biWidth+0x03)&(~0x03);
+        uint8_t line_buf[stride];
         int32_t hh,ww;
         for(hh=bmp_h.biHeight;hh;--hh){
 
-            len=mp_stream_rw(bmp_file ,&line_buf, stride/4, &errcode, MP_STREAM_OP_READ);
-            if ((errcode != 0) && (len!=stride/4)){
+            len=mp_stream_rw(bmp_file ,&line_buf, stride, &errcode, MP_STREAM_OP_READ);
+            if ((errcode != 0) && (len!=stride)){
                 mp_printf(&mp_plat_print,"read file %s error!\r\n",filename);
                 return mp_const_none;
             }
@@ -1772,12 +1772,12 @@ STATIC mp_obj_t framebuf_show_bmp(size_t n_args, const mp_obj_t *args) {
             }
         }
     }else if ((self->format&0xE0)==(FRAMEBUF_GS4_HMSB&0xE0)){
-        uint32_t stride=(bmp_h.biWidth+0x07)&(~0x07);
-        uint8_t line_buf[stride/2];
+        uint32_t stride=(bmp_h.biWidth+0x03)&(~0x03);
+        uint8_t line_buf[stride];
         int32_t hh,ww;
         for(hh=bmp_h.biHeight;hh;--hh){
-            len=mp_stream_rw(bmp_file ,&line_buf, stride/2, &errcode, MP_STREAM_OP_READ);
-            if ((errcode != 0) && (len!=stride/2)){
+            len=mp_stream_rw(bmp_file ,&line_buf, stride, &errcode, MP_STREAM_OP_READ);
+            if ((errcode != 0) && (len!=stride)){
                 mp_printf(&mp_plat_print,"read file %s error!\r\n",filename);
                 return mp_const_none;
             }
@@ -1788,13 +1788,6 @@ STATIC mp_obj_t framebuf_show_bmp(size_t n_args, const mp_obj_t *args) {
                     }else{
                         setpixel(self, x0+ww-1, y0+hh-1,((~line_buf[ww-1])>>4)&0x0f);
                     }
-                }
-            }
-            if (bmp_h.biWidth%8>0){  
-                len=mp_stream_rw(bmp_file ,&line_buf, 3-(bmp_h.biWidth%8+1)/2, &errcode, MP_STREAM_OP_READ);
-                if (errcode != 0 && len!=sizeof(BITMAPFILEHEADER)) {
-                    mp_raise_OSError(errcode);
-                    return mp_const_none;          
                 }
             }
         }
